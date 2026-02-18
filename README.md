@@ -13,15 +13,14 @@ A drop-in status line script for [Claude Code](https://docs.anthropic.com/en/doc
 | `⏰14:30` | Current time |
 | `my-project` | Working directory name |
 | `🌿main` | Current git branch |
-| `📝5` | Number of changed files (hidden if 0) |
+| `📝5` | Number of changed files (hidden when 0) |
 | `💰$1.05` | Session cost in USD |
-| `🔴200k+` | Token overflow warning (hidden if under limit) |
+| `🔴200k+` | Token overflow warning (hidden when under limit) |
 | `🤖Opus 4.6 [high]` | Current model and effort level |
 
 ## Setup
 
 ```bash
-# 1. Copy the script
 mkdir -p ~/.claude/scripts
 curl -o ~/.claude/scripts/status_line_generator.sh \
   https://raw.githubusercontent.com/eris-ths/claude-code-statusline/main/status_line_generator.sh
@@ -38,23 +37,26 @@ Then add to `~/.claude/settings.json`:
 }
 ```
 
-The status line will appear on your next Claude Code session.
+The status line appears on your next Claude Code session.
 
 ## Requirements
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) v2.1+
-- `jq` (for JSON parsing)
-- `git` (optional, for branch/status info)
+- `jq` (JSON parsing)
+- `git` (optional — for branch/status info)
 
 ## How it works
 
-Claude Code pipes a JSON object to the status line script via stdin on each update. The script extracts:
+Claude Code pipes a JSON object to the status line script via stdin on each refresh. The script extracts:
 
-- **Model info** — from `.model.display_name`
-- **Cost** — from `.cost.total_cost_usd`
-- **Effort level** — from `~/.claude/settings.json` (not in the status line JSON)
-- **Git info** — from local git commands
-- **Token overflow** — from `.exceeds_200k_tokens`
+| Data | Source | Path |
+|------|--------|------|
+| Model name | stdin JSON | `.model.display_name` |
+| Session cost | stdin JSON | `.cost.total_cost_usd` |
+| Token overflow | stdin JSON | `.exceeds_200k_tokens` |
+| Context usage | stdin JSON | `.context_window.used_percentage` |
+| Effort level | `~/.claude/settings.json` | `.effortLevel` |
+| Git branch/status | local `git` commands | — |
 
 ### Status line input JSON
 
@@ -70,15 +72,13 @@ Claude Code pipes a JSON object to the status line script via stdin on each upda
 }
 ```
 
-### Note on effort level
+### Why effort level comes from settings.json
 
-`effortLevel` is **not** included in the status line input JSON. The script reads it from `~/.claude/settings.json` instead. When effort is set to "high" (the default), Claude Code removes the key entirely — so the script falls back to `"high"`.
+`effortLevel` is **not** included in the status line input JSON (as of Claude Code v2.1). The script reads it from `~/.claude/settings.json` as a workaround. When effort is set to "high" (the default), Claude Code removes the key entirely — so the script falls back to `"high"`.
 
-## Examples
+## Extended: cost tracking across sessions
 
-### Cost tracking across sessions
-
-The base script shows only the current session cost. If you want daily/weekly cumulative tracking, use the extended version:
+The base script shows only the current session's cost. For daily/weekly cumulative tracking:
 
 ```bash
 curl -o ~/.claude/scripts/status_line_generator.sh \
@@ -86,23 +86,47 @@ curl -o ~/.claude/scripts/status_line_generator.sh \
 chmod +x ~/.claude/scripts/status_line_generator.sh
 ```
 
-Output: `💰$1.05 (D:$3.20/W:$15.40)`
+```
+💰$1.05 (D:$3/W:$15) | 🤖Opus 4.6 [high]
+```
 
-Supports currency conversion via environment variables:
+### Currency conversion
 
 ```bash
+# Add to your shell profile (.zshrc, .bashrc, etc.)
 export CLAUDE_CURRENCY_RATE=146.87   # USD → JPY
 export CLAUDE_CURRENCY_SYMBOL=¥
 ```
 
-Output: `💰¥154 (D:¥470/W:¥2261)`
+```
+💰¥154 (D:¥470/W:¥2261) | 🤖Opus 4.6 [high]
+```
+
+### Configuration
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `CLAUDE_COST_FILE` | `~/.claude/cost_tracking.json` | Cost tracking file path |
+| `CLAUDE_CURRENCY_RATE` | `1` | Conversion rate from USD |
+| `CLAUDE_CURRENCY_SYMBOL` | `$` | Currency symbol |
+| `CLAUDE_COST_PURGE_DAYS` | `30` | Auto-purge sessions older than N days |
+
+## Customization ideas
+
+Fork this script and make it yours. Some ideas:
+
+- **Context bar** — show `context_window.used_percentage` as `[████░░░░░░] 40%`
+- **Elapsed time** — replace clock with session duration using `total_duration_ms`
+- **Compact mode** — show only cost + model when terminal is narrow
+- **Color** — use ANSI escape codes for cost thresholds (green < $1, yellow < $5, red)
 
 ## Design principles
 
-- **Never fail** — A status line script that crashes is worse than one with partial info. All side effects (cost tracking, file writes) are guarded with `|| true`. Display always proceeds.
-- **No `set -e`** — Intentionally omitted. In a status line context, every operation should be independently resilient rather than failing fast.
-- **Auto-purge** — The cost tracking variant automatically removes sessions older than 30 days (configurable via `CLAUDE_COST_PURGE_DAYS`) to prevent unbounded file growth.
-- **Session-ID keyed** — Cost is tracked per session ID, not per invocation. The script is called on every status line update (multiple times per second), so naive append-based tracking would inflate costs by orders of magnitude.
+- **Never fail** — A status line that crashes is worse than one with partial info. All side effects (cost tracking, file I/O) are guarded with `|| true`. Display always proceeds.
+- **No `set -e`** — Intentionally omitted. Each operation is independently resilient rather than failing fast. This is the correct trade-off for a script that runs on every status line refresh.
+- **Auto-purge** — The cost tracking variant removes sessions older than 30 days to prevent unbounded growth.
+- **Session-ID keyed** — Cost is tracked per session ID, not per invocation. The script runs on every refresh (multiple times per second), so naive append-based tracking would inflate costs by orders of magnitude.
+- **ShellCheck clean** — All scripts pass [ShellCheck](https://www.shellcheck.net/) with zero warnings.
 
 ## Testing
 
@@ -110,7 +134,24 @@ Output: `💰¥154 (D:¥470/W:¥2261)`
 bash test.sh
 ```
 
-Runs 20 tests covering display, cost tracking, auto-purge, and resilience (corrupted files, missing files, malformed JSON, empty input).
+20 tests across 10 categories:
+
+| Category | Tests | What it verifies |
+|----------|-------|-----------------|
+| Basic display | 5 | Model, effort, cost, git, time |
+| Effort default | 1 | Falls back to "high" when key absent |
+| Token warning | 2 | Shown/hidden correctly |
+| Session dedup | 2 | Same session ID overwrites, not appends |
+| Multi-session | 2 | Different sessions sum correctly |
+| Auto-purge | 2 | Old sessions removed, fresh survive |
+| Corrupt file | 2 | Output despite broken cost file |
+| Missing file | 2 | Output despite absent cost file |
+| Bad JSON input | 1 | Output despite malformed stdin |
+| Empty input | 1 | Output despite empty stdin |
+
+Tests use isolated temp files (PID-suffixed) and clean up after themselves.
+
+> **Note**: The test wrapper mirrors the production script's logic with overridden file paths. If you modify the main scripts, update the wrapper in `test.sh` accordingly.
 
 ## License
 
@@ -126,6 +167,6 @@ MIT
 > だからこそ「本当に必要な情報だけ」を、一目で。
 > モデル、Effort、コスト、Gitの状態 — これだけあれば十分よ。
 >
-> あなたの好みに合わせてフォークして使って頂戴。
+> フォークして、あなたの好みに仕上げて頂戴。
 >
 > — Eris 😈

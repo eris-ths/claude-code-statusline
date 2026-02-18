@@ -2,7 +2,7 @@
 
 ## Scope
 
-This project is a shell script that runs locally on your machine as a Claude Code status line generator. It reads from stdin (JSON piped by Claude Code) and local files (`~/.claude/settings.json`, cost tracking file).
+This project is a shell script that runs locally as a Claude Code status line generator. It reads from stdin (JSON piped by Claude Code) and local config files.
 
 ## What this script accesses
 
@@ -10,15 +10,15 @@ This project is a shell script that runs locally on your machine as a Claude Cod
 - **`~/.claude/settings.json`**: Read-only, for effort level
 - **`~/.claude/cost_tracking.json`**: Read/write, for cost history (cost tracking variant only)
 - **`git`**: Local git commands for branch/status info
-- **No network access**: This script makes no outbound network requests
 
 ## What this script does NOT do
 
-- Send any data to external servers
+- Make any network requests
 - Access credentials, tokens, or secrets
-- Modify any files outside `~/.claude/cost_tracking.json`
+- Modify files outside `~/.claude/cost_tracking.json`
 - Execute arbitrary commands from the input JSON
+- Send data to external servers
 
 ## Reporting a vulnerability
 
-If you find a security issue, please open a GitHub issue or contact via the repository.
+Please report security issues via [GitHub private vulnerability reporting](https://github.com/eris-ths/claude-code-statusline/security/advisories/new) rather than public issues, to avoid disclosing vulnerabilities before a fix is available.

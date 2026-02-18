@@ -46,7 +46,7 @@ if [ -n "$cost_usd" ]; then
     if [ -n "$session_id" ]; then
         {
             [ -f "$COST_FILE" ] || echo '{"sessions":{},"daily_totals":{},"weekly_totals":{}}' > "$COST_FILE"
-            cutoff=$(date -v-${PURGE_DAYS}d +%Y-%m-%d 2>/dev/null || date -d "${PURGE_DAYS} days ago" +%Y-%m-%d 2>/dev/null || echo "")
+            cutoff=$(date -v-"${PURGE_DAYS}"d +%Y-%m-%d 2>/dev/null || date -d "${PURGE_DAYS} days ago" +%Y-%m-%d 2>/dev/null || echo "")
             jq --arg sid "$session_id" \
                --arg date "$(date +%Y-%m-%d)" \
                --arg week "$(date +%Y-W%U)" \

@@ -1,20 +1,21 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════
-# StatusLine Generator テスト
-# テスト用隔離ファイルを使い、本番環境に影響しない
+# Status Line Generator — Test Suite
+# Uses isolated temp files; does not affect production.
 # ═══════════════════════════════════════════════════════
 
 PASS=0
 FAIL=0
 
-# ─── テスト用隔離環境 ───
+# ─── Isolated test environment ───
 export TEST_COST_FILE="/tmp/test_cost_tracking_$$.json"
 export TEST_SETTINGS_FILE="/tmp/test_settings_$$.json"
 WRAPPER="/tmp/test_statusline_wrapper_$$.sh"
 
 echo '{"effortLevel":"medium"}' > "$TEST_SETTINGS_FILE"
 
-# テスト用ラッパー（本番スクリプトと同じロジック、ファイルパスだけ差替）
+# Test wrapper: mirrors production logic with overridden file paths.
+# NOTE: If you change the main scripts, update this wrapper accordingly.
 cat > "$WRAPPER" << 'WEOF'
 #!/bin/bash
 COST_FILE="$TEST_COST_FILE"
@@ -37,7 +38,7 @@ if [ -n "$cost_usd" ]; then
 
     if [ -n "$session_id" ] && [ -f "$COST_FILE" ]; then
         {
-            cutoff=$(date -v-${PURGE_DAYS}d +%Y-%m-%d 2>/dev/null || date -d "${PURGE_DAYS} days ago" +%Y-%m-%d 2>/dev/null || echo "")
+            cutoff=$(date -v-"${PURGE_DAYS}"d +%Y-%m-%d 2>/dev/null || date -d "${PURGE_DAYS} days ago" +%Y-%m-%d 2>/dev/null || echo "")
             jq --arg sid "$session_id" \
                --arg date "$(date +%Y-%m-%d)" \
                --arg week "$(date +%Y-W%U)" \
@@ -62,7 +63,7 @@ cumulative=""
 if [ -f "$COST_FILE" ]; then
     daily=$(jq -r --arg d "$(date +%Y-%m-%d)" '.daily_totals[$d] // 0 | floor' "$COST_FILE" 2>/dev/null) || daily=0
     weekly=$(jq -r --arg w "$(date +%Y-W%U)" '.weekly_totals[$w] // 0 | floor' "$COST_FILE" 2>/dev/null) || weekly=0
-    cumulative=" (日¥${daily}/週¥${weekly})"
+    cumulative=" (D:¥${daily}/W:¥${weekly})"
 fi
 
 token_warn=""
@@ -136,6 +137,7 @@ assert_not_contains() {
     fi
 }
 
+# Helper: generate status line input JSON
 make_json() {
     local model="${1:-Test}" cost="${2:-0}" sid="${3:-test}" exceed="${4:-false}"
     echo "{\"model\":{\"id\":\"test\",\"display_name\":\"$model\"},\"cost\":{\"total_cost_usd\":$cost},\"session_id\":\"$sid\",\"exceeds_200k_tokens\":$exceed}"
@@ -154,19 +156,19 @@ assert_contains "Git branch" "🌿" "$output"
 assert_contains "Time format" "⏰" "$output"
 
 # ═══════════════════════════════════════════════════════
-echo "=== 2. Display: effort default (high) ==="
+echo "=== 2. Display: effort defaults to high ==="
 echo '{}' > "$TEST_SETTINGS_FILE"
 output=$(make_json "Sonnet 4.6" 0.5 "test-2" | bash "$SCRIPT")
 assert_contains "Effort defaults to high" "\[high\]" "$output"
-echo '{"effortLevel":"medium"}' > "$TEST_SETTINGS_FILE"  # restore
+echo '{"effortLevel":"medium"}' > "$TEST_SETTINGS_FILE"
 
 # ═══════════════════════════════════════════════════════
 echo "=== 3. Display: 200k token warning ==="
 output=$(make_json "Test" 0 "test-3a" true | bash "$SCRIPT")
-assert_contains "200k warning shown" "🔴200k+" "$output"
+assert_contains "Warning shown when exceeded" "🔴200k+" "$output"
 
 output=$(make_json "Test" 0 "test-3b" false | bash "$SCRIPT")
-assert_not_contains "200k warning hidden" "🔴200k+" "$output"
+assert_not_contains "Warning hidden when not exceeded" "🔴200k+" "$output"
 
 # ═══════════════════════════════════════════════════════
 echo "=== 4. Cost tracking: session dedup ==="
@@ -191,19 +193,17 @@ session_count=$(jq '.sessions | length' "$COST_FILE")
 assert_eq "Two sessions recorded" "2" "$session_count"
 
 daily=$(jq -r --arg d "$date_key" '.daily_totals[$d] // 0' "$COST_FILE")
-assert_eq "Daily total = sum (441)" "441" "$daily"
+assert_eq "Daily total = sum of both (441)" "441" "$daily"
 
 # ═══════════════════════════════════════════════════════
 echo "=== 6. Cost tracking: auto-purge old sessions ==="
 reset_cost_file
-# Inject an old session (60 days ago) directly into the cost file
 old_date=$(date -v-60d +%Y-%m-%d 2>/dev/null || date -d "60 days ago" +%Y-%m-%d)
 old_week=$(date -v-60d +%Y-W%U 2>/dev/null || date -d "60 days ago" +%Y-W%U)
 jq --arg d "$old_date" --arg w "$old_week" \
    '.sessions["old-session"] = {timestamp: "2025-12-01 10:00:00", cost_yen: 999, date: $d, week: $w}' \
    "$COST_FILE" > "${COST_FILE}.tmp" && mv "${COST_FILE}.tmp" "$COST_FILE"
 
-# Now run with a fresh session — old one should be purged
 export TEST_PURGE_DAYS=30
 make_json "Test" 1.0 "fresh-session" | bash "$SCRIPT" > /dev/null
 unset TEST_PURGE_DAYS
@@ -218,7 +218,6 @@ assert_eq "Old session key gone" "false" "$has_old"
 echo "=== 7. Resilience: corrupted cost file ==="
 echo 'NOT JSON!!!' > "$COST_FILE"
 output=$(make_json "Opus 4.6" 1.05 "test-corrupt" | bash "$SCRIPT")
-# Script must still produce output (cost tracking fails silently)
 assert_contains "Output despite corrupt file" "Opus 4.6" "$output"
 assert_contains "Cost still shown" "¥" "$output"
 
@@ -227,12 +226,11 @@ echo "=== 8. Resilience: missing cost file ==="
 rm -f "$COST_FILE"
 output=$(make_json "Opus 4.6" 0.5 "test-missing" | bash "$SCRIPT")
 assert_contains "Output despite missing file" "Opus 4.6" "$output"
-assert_not_contains "No cumulative when file missing" "日¥" "$output"
+assert_not_contains "No cumulative when file missing" "D:¥" "$output"
 
 # ═══════════════════════════════════════════════════════
 echo "=== 9. Resilience: malformed input JSON ==="
 output=$(echo 'not json at all' | bash "$SCRIPT")
-# Should still output something (time, git, etc.)
 assert_contains "Output despite bad JSON" "⏰" "$output"
 
 # ═══════════════════════════════════════════════════════
