@@ -37,7 +37,7 @@ Then add to `~/.claude/settings.json`:
 }
 ```
 
-The status line appears on your next Claude Code session.
+The status line will appear once Claude Code refreshes (typically within seconds).
 
 ## Requirements
 
@@ -49,14 +49,15 @@ The status line appears on your next Claude Code session.
 
 Claude Code pipes a JSON object to the status line script via stdin on each refresh. The script extracts:
 
-| Data | Source | Path |
-|------|--------|------|
-| Model name | stdin JSON | `.model.display_name` |
-| Session cost | stdin JSON | `.cost.total_cost_usd` |
-| Token overflow | stdin JSON | `.exceeds_200k_tokens` |
-| Context usage | stdin JSON | `.context_window.used_percentage` |
-| Effort level | `~/.claude/settings.json` | `.effortLevel` |
-| Git branch/status | local `git` commands | — |
+| Data | Source | Path | Used by |
+|------|--------|------|---------|
+| Model name | stdin JSON | `.model.display_name` | base, extended |
+| Session cost | stdin JSON | `.cost.total_cost_usd` | base, extended |
+| Session ID | stdin JSON | `.session_id` | extended only |
+| Token overflow | stdin JSON | `.exceeds_200k_tokens` | base, extended |
+| Context usage | stdin JSON | `.context_window.used_percentage` | *(available, not displayed)* |
+| Effort level | `~/.claude/settings.json` | `.effortLevel` | base, extended |
+| Git branch/status | local `git` commands | — | base, extended |
 
 ### Status line input JSON
 
@@ -87,7 +88,7 @@ chmod +x ~/.claude/scripts/status_line_generator.sh
 ```
 
 ```
-💰$1.05 (D:$3/W:$15) | 🤖Opus 4.6 [high]
+⏰14:30 my-project | 🌿main 📝5 | 💰$1.05 (D:$3/W:$15) | 🤖Opus 4.6 [high]
 ```
 
 ### Currency conversion
@@ -99,7 +100,7 @@ export CLAUDE_CURRENCY_SYMBOL=¥
 ```
 
 ```
-💰¥154 (D:¥470/W:¥2261) | 🤖Opus 4.6 [high]
+⏰14:30 my-project | 🌿main 📝5 | 💰¥154 (D:¥470/W:¥2261) | 🤖Opus 4.6 [high]
 ```
 
 ### Configuration
@@ -116,9 +117,9 @@ export CLAUDE_CURRENCY_SYMBOL=¥
 Fork this script and make it yours. Some ideas:
 
 - **Context bar** — show `context_window.used_percentage` as `[████░░░░░░] 40%`
-- **Elapsed time** — replace clock with session duration using `total_duration_ms`
+- **Elapsed time** — replace clock with session duration using `.cost.total_duration_ms`
 - **Compact mode** — show only cost + model when terminal is narrow
-- **Color** — use ANSI escape codes for cost thresholds (green < $1, yellow < $5, red)
+- **Color** — use ANSI escape codes for cost thresholds (green < $1, yellow < $5, red). Note: ANSI support depends on your terminal and Claude Code version
 
 ## Design principles
 
