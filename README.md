@@ -20,17 +20,15 @@ A drop-in status line script for [Claude Code](https://docs.anthropic.com/en/doc
 
 ## Setup
 
-### 1. Copy the script
-
 ```bash
+# 1. Copy the script
 mkdir -p ~/.claude/scripts
-cp status_line_generator.sh ~/.claude/scripts/
+curl -o ~/.claude/scripts/status_line_generator.sh \
+  https://raw.githubusercontent.com/eris-ths/claude-code-statusline/main/status_line_generator.sh
 chmod +x ~/.claude/scripts/status_line_generator.sh
 ```
 
-### 2. Configure Claude Code
-
-Add to `~/.claude/settings.json`:
+Then add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -40,26 +38,25 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-That's it. The status line will appear on your next Claude Code session.
+The status line will appear on your next Claude Code session.
 
 ## Requirements
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) v2.1+
 - `jq` (for JSON parsing)
-- `git` (for branch/status info)
+- `git` (optional, for branch/status info)
 
 ## How it works
 
 Claude Code pipes a JSON object to the status line script via stdin on each update. The script extracts:
 
-- **Model info** from the input JSON (`.model.display_name`)
-- **Cost** from the input JSON (`.cost.total_cost_usd`)
-- **Effort level** from `~/.claude/settings.json` (not available in the status line JSON input)
-- **Git info** from local git commands
+- **Model info** — from `.model.display_name`
+- **Cost** — from `.cost.total_cost_usd`
+- **Effort level** — from `~/.claude/settings.json` (not in the status line JSON)
+- **Git info** — from local git commands
+- **Token overflow** — from `.exceeds_200k_tokens`
 
-### Available JSON fields
-
-The status line input JSON contains these fields:
+### Status line input JSON
 
 ```json
 {
@@ -73,14 +70,32 @@ The status line input JSON contains these fields:
 }
 ```
 
-## Customization
+### Note on effort level
 
-Fork this script and customize it to your needs. Some ideas:
+`effortLevel` is **not** included in the status line input JSON. The script reads it from `~/.claude/settings.json` instead. When effort is set to "high" (the default), Claude Code removes the key entirely — so the script falls back to `"high"`.
 
-- **Currency conversion**: Replace `$` formatting with your local currency
-- **Cost tracking**: Accumulate costs across sessions to a file
-- **Context usage**: Show `context_window.used_percentage` as a progress bar
-- **Timestamp**: Show elapsed time instead of clock time
+## Examples
+
+### Cost tracking across sessions
+
+The base script shows only the current session cost. If you want daily/weekly cumulative tracking, use the extended version:
+
+```bash
+curl -o ~/.claude/scripts/status_line_generator.sh \
+  https://raw.githubusercontent.com/eris-ths/claude-code-statusline/main/examples/with_cost_tracking.sh
+chmod +x ~/.claude/scripts/status_line_generator.sh
+```
+
+Output: `💰$1.05 (D:$3.20/W:$15.40)`
+
+Supports currency conversion via environment variables:
+
+```bash
+export CLAUDE_CURRENCY_RATE=146.87   # USD → JPY
+export CLAUDE_CURRENCY_SYMBOL=¥
+```
+
+Output: `💰¥154 (D:¥470/W:¥2261)`
 
 ## License
 
