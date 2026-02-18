@@ -97,6 +97,21 @@ export CLAUDE_CURRENCY_SYMBOL=¥
 
 Output: `💰¥154 (D:¥470/W:¥2261)`
 
+## Design principles
+
+- **Never fail** — A status line script that crashes is worse than one with partial info. All side effects (cost tracking, file writes) are guarded with `|| true`. Display always proceeds.
+- **No `set -e`** — Intentionally omitted. In a status line context, every operation should be independently resilient rather than failing fast.
+- **Auto-purge** — The cost tracking variant automatically removes sessions older than 30 days (configurable via `CLAUDE_COST_PURGE_DAYS`) to prevent unbounded file growth.
+- **Session-ID keyed** — Cost is tracked per session ID, not per invocation. The script is called on every status line update (multiple times per second), so naive append-based tracking would inflate costs by orders of magnitude.
+
+## Testing
+
+```bash
+bash test.sh
+```
+
+Runs 20 tests covering display, cost tracking, auto-purge, and resilience (corrupted files, missing files, malformed JSON, empty input).
+
 ## License
 
 MIT

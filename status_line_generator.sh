@@ -10,23 +10,24 @@
 #   2. chmod +x ~/.claude/scripts/status_line_generator.sh
 #   3. Add to ~/.claude/settings.json:
 #      { "statusLine": { "script": "~/.claude/scripts/status_line_generator.sh" } }
-
-set -euo pipefail
+#
+# Design principle: status line scripts must NEVER fail.
+# Partial output beats no output. All operations are guarded.
 
 # ─── Input ───
 input=$(cat)
-json_val() { echo "$input" | jq -r "$1" 2>/dev/null || echo "$2"; }
+json_val() { echo "$input" | jq -r "$1" 2>/dev/null || echo "${2:-}"; }
 
 # ─── Model & Effort ───
-model_name=$(json_val '.model.display_name // ""' "")
+model_name=$(json_val '.model.display_name // ""')
 # effortLevel is absent from status line JSON; read from settings.json
-# When set to "high" (default), the key is removed, so we fall back to "high"
+# When set to "high" (default), the key is removed — fall back to "high"
 effort=$(jq -r '.effortLevel // "high"' "$HOME/.claude/settings.json" 2>/dev/null || echo "high")
 
 # ─── Cost ───
-cost_usd=$(json_val '.cost.total_cost_usd // empty' "")
+cost_usd=$(json_val '.cost.total_cost_usd // empty')
 if [ -n "$cost_usd" ]; then
-    cost_str=$(printf '$%.2f' "$cost_usd" 2>/dev/null || echo "N/A")
+    cost_str=$(printf '$%.2f' "$cost_usd" 2>/dev/null) || cost_str="N/A"
 else
     cost_str="N/A"
 fi
@@ -40,10 +41,10 @@ fi
 # ─── Git ───
 git_str=""
 if git rev-parse --git-dir > /dev/null 2>&1; then
-    branch=$(git branch --show-current 2>/dev/null || echo "detached")
+    branch=$(git branch --show-current 2>/dev/null) || branch="detached"
     changed=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
     git_str="🌿${branch}"
-    [ "$changed" -gt 0 ] && git_str="${git_str} 📝${changed}"
+    [ "${changed:-0}" -gt 0 ] && git_str="${git_str} 📝${changed}"
 fi
 
 # ─── Model display ───
